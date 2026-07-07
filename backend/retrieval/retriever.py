@@ -1,5 +1,9 @@
 # backend/retrieval/retriever.py
 import os
+from dotenv import load_dotenv  # 🌟 1. 导入它
+
+# 🌟 2. 必须在所有调用 os.getenv() 的代码之前执行
+load_dotenv()
 from langchain_chroma import Chroma
 from zhipuai import ZhipuAI
 from langchain.embeddings.base import Embeddings
