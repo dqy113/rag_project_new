@@ -2,13 +2,36 @@ import streamlit as st
 import os
 from backend.rag import ask
 
-st.set_page_config(page_title="智能问答助手", page_icon="🤖")
-st.title("🤖 我的第一个智能问答网页")
+# ===== 页面配置 =====
+st.set_page_config(
+    page_title="数据结构智能问答助手",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# ===== 标题区域 =====
+st.markdown("""
+# 📚 数据结构知识智能问答系统
+> 基于 RAG 技术，回答数据结构相关问题
+""")
+
+st.divider()
+
+# ===== 侧边栏 =====
 with st.sidebar:
-    st.markdown("## 📚 知识库管理")
+    # Logo 区域
+    st.markdown("""
+    <div style="text-align: center; padding: 12px 0 20px 0;">
+        <div style="font-size: 48px;">📚</div>
+        <div style="font-weight: 600; font-size: 18px; color: #1e1b4b;">智能问答</div>
+        <div style="font-size: 12px; color: #6b7280;">数据结构 · RAG</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.divider()
     
-   # 动态显示知识库状态：读取 data/ 文件夹里的文档数量
+    # ===== 知识库状态 =====
+    st.markdown("### 📁 知识库状态")
     data_dir = "data"
     if os.path.exists(data_dir):
         doc_files = [f for f in os.listdir(data_dir) if f.endswith(('.pdf', '.txt', '.docx', '.pptx'))]
@@ -26,25 +49,26 @@ with st.sidebar:
     uploaded_files = st.file_uploader(
         "点击选择文件或拖拽至此",
         type=["pdf", "txt", "docx", "pptx"],
-        accept_multiple_files=True,  # 支持批量上传
-        label_visibility="collapsed"  # 隐藏默认标签
+        accept_multiple_files=True,
+        label_visibility="collapsed"
     )
     
-    # 处理上传的文件
+    SAVE_DIR = "data"
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    
     if uploaded_files:
         for file in uploaded_files:
-            # 显示每个文件的上传状态
-            with st.spinner(f"⏳ 正在处理：{file.name}..."):
-                # TODO: 这里调用后端的解析和入库函数
-                # 目前先模拟处理成功
-                pass
-        
-        # 全部上传完成后显示成功消息
-        st.success(f"✅ 成功上传 {len(uploaded_files)} 个文件！")
-        
-        # TODO: 刷新知识库状态
-        # st.rerun()  # 可以取消注释，自动刷新页面
+            with st.spinner(f"正在处理 {file.name}..."):
+                save_path = os.path.join(SAVE_DIR, file.name)
+                with open(save_path, "wb") as f:
+                    f.write(file.getbuffer())
+                st.success(f"✅ {file.name} 上传成功！")
+        st.rerun()
+    
+    st.divider()
+    st.caption("📌 系统状态：运行中 ✅")
 
+# ===== 聊天区域 =====
 # 初始化聊天记录
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -71,3 +95,7 @@ if prompt := st.chat_input("请问您想问什么？"):
     with st.chat_message("assistant"):
         st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
+
+# ===== 页脚 =====
+st.divider()
+st.caption("💡 基于 RAG 的数据结构知识问答系统 | 知识来源：《数据结构》教材")
