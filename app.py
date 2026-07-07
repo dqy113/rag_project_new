@@ -20,8 +20,9 @@ if "username" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+
 # ============================================================
-# ===== 登录页面（未登录时显示） =====
+# ===== 登录页面 =====
 # ============================================================
 if not st.session_state.logged_in:
 
@@ -39,56 +40,35 @@ if not st.session_state.logged_in:
     with col2:
         st.markdown("### 👤 登录")
 
-        # 身份选择
-        role = st.radio(
-            "选择身份",
-            ["🎓 学生", "👨‍🏫 教师"],
-            horizontal=True
-        )
+        role = st.radio("选择身份", ["🎓 学生", "👨‍🏫 教师"], horizontal=True)
+        username = st.text_input("学号 / 工号", placeholder="请输入学号或工号")
+        password = st.text_input("密码", type="password", placeholder="请输入密码")
 
-        # 学号/工号
-        username = st.text_input(
-            "学号 / 工号",
-            placeholder="请输入学号或工号"
-        )
-
-        # 密码
-        password = st.text_input(
-            "密码",
-            type="password",
-            placeholder="请输入密码"
-        )
-
-        # 登录按钮
         if st.button("🔑 登录", type="primary", use_container_width=True):
-
             if not username or not password:
                 st.warning("⚠️ 请完整填写账号和密码")
+            elif username == "admin" and password == "123456":
+                st.session_state.logged_in = True
+                st.session_state.user_role = "teacher"
+                st.session_state.username = username
+                st.rerun()
+            elif username == "student" and password == "123456":
+                st.session_state.logged_in = True
+                st.session_state.user_role = "student"
+                st.session_state.username = username
+                st.rerun()
             else:
-                # 模拟验证：硬编码测试账号
-                if username == "admin" and password == "123456":
-                    st.session_state.logged_in = True
-                    st.session_state.user_role = "teacher"
-                    st.session_state.username = username
-                    st.rerun()
-                elif username == "student" and password == "123456":
-                    st.session_state.logged_in = True
-                    st.session_state.user_role = "student"
-                    st.session_state.username = username
-                    st.rerun()
-                else:
-                    st.error("❌ 账号或密码错误，请重新输入")
+                st.error("❌ 账号或密码错误，请重新输入")
 
         st.caption("💡 测试账号：admin / 123456（教师） | student / 123456（学生）")
 
-    st.stop()  # 登录后不再执行下面代码
+    st.stop()
 
 
 # ============================================================
-# ===== 登录后的主界面 =====
+# ===== 主界面 =====
 # ============================================================
 
-# 顶部提示
 if st.session_state.user_role == "teacher":
     st.success(f"👨‍🏫 教师管理员：{st.session_state.username}，欢迎回来！")
 else:
@@ -101,9 +81,13 @@ st.markdown("""
 
 st.divider()
 
+
+# ============================================================
 # ===== 侧边栏 =====
+# ============================================================
 with st.sidebar:
-    # Logo 区域
+
+    # ----- Logo -----
     st.markdown("""
     <div style="text-align: center; padding: 12px 0 20px 0;">
         <div style="font-size: 48px;">📚</div>
@@ -113,7 +97,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.divider()
 
-    # ===== 当前用户信息 =====
+    # ----- 用户信息 -----
     st.markdown("### 👤 当前用户")
     if st.session_state.user_role == "teacher":
         st.info("👨‍🏫 教师管理员")
@@ -121,17 +105,15 @@ with st.sidebar:
         st.info("🎓 学生")
     st.caption(f"账号：{st.session_state.username}")
 
-    # 退出登录
     if st.button("🚪 退出登录"):
         st.session_state.logged_in = False
         st.session_state.user_role = None
         st.session_state.username = ""
         st.session_state.messages = []
         st.rerun()
-
     st.divider()
 
-    # ===== 知识库状态 =====
+    # ----- 知识库状态 -----
     st.markdown("### 📁 知识库状态")
     data_dir = "data"
     if os.path.exists(data_dir):
@@ -140,12 +122,9 @@ with st.sidebar:
         st.info(f"📄 已加载文档：{doc_count} 份")
     else:
         st.info("📄 知识库：暂无文档")
-
     st.divider()
 
-    # ============================================================
-    # ===== 学生功能 =====
-    # ============================================================
+    # ----- 历史记录（学生和教师都有） -----
     st.markdown("### 📋 我的历史记录")
     if len(st.session_state.messages) > 0:
         st.caption(f"共 {len(st.session_state.messages)} 条对话记录")
@@ -154,17 +133,17 @@ with st.sidebar:
             st.rerun()
     else:
         st.caption("暂无历史记录")
-
     st.divider()
 
     # ============================================================
-    # ===== 教师功能（仅教师可见） =====
+    # ===== 教师专属功能（仅教师可见） =====
     # ============================================================
     if st.session_state.user_role == "teacher":
+
         st.markdown("### 🔧 知识库管理")
         st.caption("管理员专属功能")
 
-        # 批量上传
+        # ----- 批量上传 -----
         st.markdown("#### 📤 批量上传文档")
         st.caption("支持格式：PDF、Word、TXT、PPTX")
 
@@ -189,36 +168,46 @@ with st.sidebar:
 
         st.divider()
 
-        # 知识库分类
-        st.markdown("#### 📂 知识库分类")
-        categories = ["线性表", "栈与队列", "串", "树与二叉树", "图", "排序", "查找"]
-        for cat in categories:
-            st.checkbox(cat, value=True)
+        # ----- 知识库分类（仅教师） -----
+        st.markdown("### 🗂️ 知识库分类")
+        st.caption("对已入库的文档进行分类、标注和时效性维护")
 
-        st.divider()
+        if os.path.exists("data"):
+            all_files = [f for f in os.listdir("data") if f.endswith(('.pdf', '.txt', '.docx', '.pptx'))]
+            if all_files:
+                selected_file = st.selectbox("选择文件", sorted(all_files), key="doc_select")
+                category_options = [
+                    "Linear Lists (Arrays/Linked Lists)",
+                    "Tree Structures (Binary Trees/AVL)",
+                    "Graph Structures",
+                    "Searching & Sorting Algorithms",
+                    "Core Fundamental Concepts"
+                ]
+                doc_category = st.selectbox("选择所属类别", category_options, key="cat_select")
+                doc_label = st.text_input("标签标注", placeholder="如: 核心算法, 难点源码", key="label_input")
 
-        # 知识内容审核
-        st.markdown("#### ✏️ 知识内容审核")
-        st.caption("待审核知识条目：3 条")
-        if st.button("📋 查看待审核条目"):
-            st.info("1. 栈与队列 - 入栈出栈操作（待确认）\n2. 二叉树遍历 - 先序遍历（待修改）\n3. 快速排序 - 时间复杂度（待更新）")
+                if st.button("💾 保存分类与标注", use_container_width=True, key="save_btn"):
+                    st.info("📌 分类功能开发中，等待后端接口完成")
+            else:
+                st.info("💡 暂无本地文件。请先上传新文档。")
+        else:
+            st.warning("⚠️ 未检测到 data/ 文件夹。")
 
     else:
-        # 学生侧边栏底部提示
+        # 学生看到的提示
         st.caption("💡 教师可切换至管理员模式管理知识库")
+
 
 # ============================================================
 # ===== 聊天区域 =====
 # ============================================================
 
-# 显示历史聊天内容
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "source" in msg and msg["source"]:
             st.caption(f"📖 来源：{msg['source']}")
 
-# 接受用户输入
 if prompt := st.chat_input("请问您想问什么？"):
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -241,7 +230,6 @@ if prompt := st.chat_input("请问您想问什么？"):
         st.markdown(answer)
         if source:
             st.caption(f"📖 来源：{source}")
-
         st.divider()
         st.caption("💡 基于 RAG 的数据结构知识问答系统 | 知识来源：本校课程讲义与教材")
 
