@@ -1,71 +1,208 @@
 # backend/service/rag_service.py
+
+import uuid
 import time
+
 from backend.utils.logger import logger
-from backend.llm.llm_client import ZhipuLLMClient
-from backend.retrieval.retriever import KnowledgeRetriever
+
+from backend.retrieval.retriever import Retriever
+from backend.retrieval.prompt_builder import PromptBuilder
+
+from backend.llm.llm_client import LLMClient
+
 from backend.models.response import AnswerResponse
 
 
 class RAGService:
-    def __init__(self):
-        self.llm_client = ZhipuLLMClient()
-        self.retriever = KnowledgeRetriever()
+    """
+    RAG核心业务服务
 
-    def ask(self, user_question: str, trace_id: str = "SYSTEM") -> AnswerResponse:
-        """核心业务逻辑处理"""
+    负责:
+    question
+        ↓
+    retrieve
+        ↓
+    prompt build
+        ↓
+    LLM generate
+        ↓
+    response
+
+    """
+
+    def __init__(
+        self,
+        retriever: Retriever,
+        prompt_builder: PromptBuilder,
+        llm_client: LLMClient
+    ):
+
+        self.retriever = retriever
+
+        self.prompt_builder = prompt_builder
+
+        self.llm_client = llm_client
+
+
+
+    def answer(
+        self,
+        question: str,
+        history: str = ""
+    ) -> AnswerResponse:
+
+
+        trace_id = str(uuid.uuid4())[:8]
+
         start_time = time.time()
-        logger.info(f"[{trace_id}] 【服务层】开始调度核心业务逻辑...")
+
+
+        logger.info(
+            f"[{trace_id}] RAG流程开始"
+        )
+
+        logger.info(
+            f"[{trace_id}] 用户问题: {question}"
+        )
+
 
         try:
-            # 1. 调度检索层（传递身份证 trace_id）
-            docs = self.retriever.search_knowledge(user_question, top_k=3, trace_id=trace_id)
 
-            # 2. 提取并清洗知识引用
-            context_list = []
-            references = []
-            for idx, doc in enumerate(docs):
-                source = doc.metadata.get('source', '未知文件')
-                page = doc.metadata.get('page', '未知页码')
-                ref_str = f"{source} 第{page}页"
-                references.append(ref_str)
+            # ======================
+            # 1. Retriever检索
+            # ======================
 
-                # 在 DEBUG 日志记录内容预览，防止正常运行时刷屏
-                logger.debug(f"[{trace_id}] 【服务层】参考片段预览: {doc.page_content[:30]}...")
-                context_list.append(f"[参考片段{idx + 1} (来源: {ref_str})]:\n{doc.page_content}")
-
-            context = "\n\n".join(context_list)
-
-            # 3. 组装 RAG 提示词
-            rag_prompt = f"""你是一个专业的数据结构智能助教。请严格根据以下给出的【已知知识库信息】来回答用户的【问题】。
-
-【回答规则】：
-1. 严格依据下面的知识库内容回答，禁止编造不存在的信息；
-2. 涉及算法时间/空间复杂度等数学表达式时，必须使用标准Markdown公式格式：所有复杂度公式前后用 $ 符号包裹；
-3. 术语不能混淆；
-4. 如果已知信息里无法回答该问题，请礼貌地回答你不知道，不要瞎编。
-
-【已知知识库信息】：
-{context}
-
-【用户的实际问题】：
-{user_question}
-"""
-
-            # 4. 调用大模型
-            final_answer = self.llm_client.get_llm_response(rag_prompt, trace_id=trace_id)
-
-            return AnswerResponse(
-                answer=final_answer,
-                references=list(set(references)),
-                latency=round(time.time() - start_time, 2),
-                success=True
+            logger.info(
+                f"[{trace_id}] 开始知识检索"
             )
 
-        except Exception as e:
-            logger.exception(f"[{trace_id}] 【服务层】内部处理发生未知异常")
+
+            chunks = self.retriever.search(
+                question
+            )
+
+
+            logger.debug(
+                f"[{trace_id}] "
+                f"召回Chunk数量: {len(chunks)}"
+            )
+
+
+            for i, chunk in enumerate(chunks):
+
+                logger.debug(
+                    f"[{trace_id}] "
+                    f"Chunk-{i}: "
+                    f"{chunk.content[:100]}"
+                )
+
+
+
+            # ======================
+            # 2. Prompt构建
+            # ======================
+
+            logger.info(
+                f"[{trace_id}] 构建Prompt"
+            )
+
+
+            prompt = self.prompt_builder.build(
+                question=question,
+                history=history,
+                chunks=chunks
+            )
+
+
+            logger.debug(
+                f"[{trace_id}] Prompt长度:{len(prompt)}"
+            )
+
+
+
+            # ======================
+            # 3. LLM生成
+            # ======================
+
+            logger.info(
+                f"[{trace_id}] 调用大模型"
+            )
+
+
+            answer = self.llm_client.generate(
+                prompt
+            )
+
+
+
+            # ======================
+            # 4. 返回Response
+            # ======================
+
+            latency = (
+                time.time()
+                -
+                start_time
+            )
+
+
+            references = []
+
+            for chunk in chunks:
+
+                references.append(
+                    chunk.metadata.get(
+                        "source",
+                        "unknown"
+                    )
+                )
+
+
+            logger.info(
+                f"[{trace_id}] "
+                f"RAG完成 "
+                f"耗时:{latency:.2f}s"
+            )
+
+
             return AnswerResponse(
-                answer="系统处理失败",
-                latency=round(time.time() - start_time, 2),
+
+                answer=answer,
+
+                references=references,
+
+                latency=latency
+
+            )
+
+
+
+        except Exception as e:
+
+
+            latency = (
+                time.time()
+                -
+                start_time
+            )
+
+
+            logger.error(
+                f"[{trace_id}] "
+                f"RAG异常:"
+                f"{str(e)}"
+            )
+
+
+            return AnswerResponse(
+
+                answer=
+                "系统处理失败，请稍后重试",
+
+                latency=latency,
+
                 success=False,
+
                 error_message=str(e)
+
             )

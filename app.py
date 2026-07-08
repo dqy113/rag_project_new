@@ -1,236 +1,393 @@
 import streamlit as st
 import os
-from backend.rag import ask
 
-# ===== 页面配置 =====
+from container import (
+    chat_controller,
+    knowledge_controller
+)
+
+
+# ==================================================
+# 页面配置
+# ==================================================
+
 st.set_page_config(
-    page_title="数据结构智能问答系统",
+    page_title="智能问答助手",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ===== 初始化登录状态 =====
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "user_role" not in st.session_state:
-    st.session_state.user_role = None
-if "username" not in st.session_state:
-    st.session_state.username = ""
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
 
-# ============================================================
-# ===== 登录页面 =====
-# ============================================================
-if not st.session_state.logged_in:
+# ==================================================
+# 标题区域
+# ==================================================
 
-    st.markdown("""
-    <div style="text-align: center; padding: 40px 0 20px 0;">
-        <div style="font-size: 64px;">📚</div>
-        <h1>数据结构智能问答系统</h1>
-        <p style="color: #6b7280; font-size: 16px;">基于 RAG 校本专属知识库</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown(
+"""
+# 📚 CS知识智能问答系统
 
-    st.divider()
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("### 👤 登录")
-
-        role = st.radio("选择身份", ["🎓 学生", "👨‍🏫 教师"], horizontal=True)
-        username = st.text_input("学号 / 工号", placeholder="请输入学号或工号")
-        password = st.text_input("密码", type="password", placeholder="请输入密码")
-
-        if st.button("🔑 登录", type="primary", use_container_width=True):
-            if not username or not password:
-                st.warning("⚠️ 请完整填写账号和密码")
-            elif username == "admin" and password == "123456":
-                st.session_state.logged_in = True
-                st.session_state.user_role = "teacher"
-                st.session_state.username = username
-                st.rerun()
-            elif username == "student" and password == "123456":
-                st.session_state.logged_in = True
-                st.session_state.user_role = "student"
-                st.session_state.username = username
-                st.rerun()
-            else:
-                st.error("❌ 账号或密码错误，请重新输入")
-
-        st.caption("💡 测试账号：admin / 123456（教师） | student / 123456（学生）")
-
-    st.stop()
-
-
-# ============================================================
-# ===== 主界面 =====
-# ============================================================
-
-if st.session_state.user_role == "teacher":
-    st.success(f"👨‍🏫 教师管理员：{st.session_state.username}，欢迎回来！")
-else:
-    st.info(f"🎓 学生：{st.session_state.username}，欢迎回来！")
-
-st.markdown("""
-# 📚 数据结构知识智能问答系统
-> 基于 RAG 校本专属知识库，精准贴合教学大纲与课堂内容
-""")
+> 基于 RAG 技术，面向课程教材的智能问答助手
+"""
+)
 
 st.divider()
 
 
-# ============================================================
-# ===== 侧边栏 =====
-# ============================================================
+
+# ==================================================
+# 侧边栏
+# ==================================================
+
 with st.sidebar:
 
-    # ----- Logo -----
-    st.markdown("""
-    <div style="text-align: center; padding: 12px 0 20px 0;">
-        <div style="font-size: 48px;">📚</div>
-        <div style="font-weight: 600; font-size: 18px; color: #1e1b4b;">智能问答</div>
-        <div style="font-size: 12px; color: #6b7280;">数据结构 · RAG</div>
+
+    st.markdown(
+    """
+    <div style="text-align:center;padding:12px 0 20px 0;">
+        <div style="font-size:48px;">📚</div>
+        <div style="font-weight:600;font-size:18px;">
+            智能问答
+        </div>
+        <div style="font-size:12px;color:#6b7280;">
+            数据结构 · RAG
+        </div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+    )
+
+
     st.divider()
 
-    # ----- 用户信息 -----
-    st.markdown("### 👤 当前用户")
-    if st.session_state.user_role == "teacher":
-        st.info("👨‍🏫 教师管理员")
-    else:
-        st.info("🎓 学生")
-    st.caption(f"账号：{st.session_state.username}")
 
-    if st.button("🚪 退出登录"):
-        st.session_state.logged_in = False
-        st.session_state.user_role = None
-        st.session_state.username = ""
-        st.session_state.messages = []
-        st.rerun()
-    st.divider()
 
-    # ----- 知识库状态 -----
-    st.markdown("### 📁 知识库状态")
-    data_dir = "data"
-    if os.path.exists(data_dir):
-        doc_files = [f for f in os.listdir(data_dir) if f.endswith(('.pdf', '.txt', '.docx', '.pptx'))]
-        doc_count = len(doc_files)
-        st.info(f"📄 已加载文档：{doc_count} 份")
-    else:
-        st.info("📄 知识库：暂无文档")
-    st.divider()
+    # ==================================================
+    # 知识库状态
+    # ==================================================
 
-    # ----- 历史记录（学生和教师都有） -----
-    st.markdown("### 📋 我的历史记录")
-    if len(st.session_state.messages) > 0:
-        st.caption(f"共 {len(st.session_state.messages)} 条对话记录")
-        if st.button("🗑️ 清空历史记录"):
-            st.session_state.messages = []
-            st.rerun()
-    else:
-        st.caption("暂无历史记录")
-    st.divider()
+    st.markdown(
+        "### 📁 知识库状态"
+    )
 
-    # ============================================================
-    # ===== 教师专属功能（仅教师可见） =====
-    # ============================================================
-    if st.session_state.user_role == "teacher":
 
-        st.markdown("### 🔧 知识库管理")
-        st.caption("管理员专属功能")
+    try:
 
-        # ----- 批量上传 -----
-        st.markdown("#### 📤 批量上传文档")
-        st.caption("支持格式：PDF、Word、TXT、PPTX")
-
-        uploaded_files = st.file_uploader(
-            "点击选择文件或拖拽至此",
-            type=["pdf", "txt", "docx", "pptx"],
-            accept_multiple_files=True,
-            label_visibility="collapsed"
+        documents = (
+            knowledge_controller
+            .get_documents()
         )
 
-        SAVE_DIR = "data"
-        os.makedirs(SAVE_DIR, exist_ok=True)
 
-        if uploaded_files:
+        st.info(
+            f"📄 已加载文档：{len(documents)} 份"
+        )
+
+
+    except Exception as e:
+
+
+        documents = []
+
+
+        st.warning(
+            "知识库初始化失败"
+        )
+
+
+
+    st.divider()
+
+
+
+    # ==================================================
+    # 上传文件
+    # ==================================================
+
+    st.markdown(
+        "### 📤 上传学习资料"
+    )
+
+
+    st.caption(
+        "支持 PDF / TXT / DOCX / PPTX"
+    )
+
+
+
+    uploaded_files = st.file_uploader(
+
+        "上传文件",
+
+        type=[
+            "pdf",
+            "txt",
+            "docx",
+            "pptx"
+        ],
+
+        accept_multiple_files=True,
+
+        label_visibility="collapsed"
+
+    )
+
+
+
+    course = st.text_input(
+        "课程名称",
+        value="数据结构"
+    )
+
+
+    tags_input = st.text_input(
+        "标签(逗号分隔)",
+        value="教材"
+    )
+
+
+
+    if st.button(
+        "开始构建知识库"
+    ):
+
+
+        if not uploaded_files:
+
+
+            st.warning(
+                "请先选择文件"
+            )
+
+
+        else:
+
+
             for file in uploaded_files:
-                with st.spinner(f"正在处理 {file.name}..."):
-                    save_path = os.path.join(SAVE_DIR, file.name)
-                    with open(save_path, "wb") as f:
-                        f.write(file.getbuffer())
-                    st.success(f"✅ {file.name} 上传成功！")
+
+
+                with st.spinner(
+                    f"正在处理 {file.name}..."
+                ):
+
+
+
+                    try:
+
+
+                        # --------------------------
+                        # 保存上传文件
+                        # --------------------------
+
+                        upload_dir = (
+                            "data/uploads"
+                        )
+
+
+                        os.makedirs(
+                            upload_dir,
+                            exist_ok=True
+                        )
+
+
+                        save_path = os.path.join(
+                            upload_dir,
+                            file.name
+                        )
+
+
+                        with open(
+                            save_path,
+                            "wb"
+                        ) as f:
+
+
+                            f.write(
+                                file.getbuffer()
+                            )
+
+
+
+                        # --------------------------
+                        # 标签处理
+                        # --------------------------
+
+                        tags = [
+
+                            tag.strip()
+
+                            for tag in tags_input.split(",")
+
+                            if tag.strip()
+
+                        ]
+
+
+
+                        # --------------------------
+                        # 调用Controller
+                        # --------------------------
+
+                        document = (
+
+                            knowledge_controller
+                            .upload_document(
+
+                                file_path=save_path,
+
+                                course=course,
+
+                                tags=tags
+
+                            )
+
+                        )
+
+
+                        st.success(
+                            f"✅ {document.filename} 构建完成"
+                        )
+
+
+                    except Exception as e:
+
+
+                        st.error(
+                            f"❌ {file.name}失败:\n{str(e)}"
+                        )
+
+
+
             st.rerun()
 
-        st.divider()
-
-        # ----- 知识库分类（仅教师） -----
-        st.markdown("### 🗂️ 知识库分类")
-        st.caption("对已入库的文档进行分类、标注和时效性维护")
-
-        if os.path.exists("data"):
-            all_files = [f for f in os.listdir("data") if f.endswith(('.pdf', '.txt', '.docx', '.pptx'))]
-            if all_files:
-                selected_file = st.selectbox("选择文件", sorted(all_files), key="doc_select")
-                category_options = [
-                    "Linear Lists (Arrays/Linked Lists)",
-                    "Tree Structures (Binary Trees/AVL)",
-                    "Graph Structures",
-                    "Searching & Sorting Algorithms",
-                    "Core Fundamental Concepts"
-                ]
-                doc_category = st.selectbox("选择所属类别", category_options, key="cat_select")
-                doc_label = st.text_input("标签标注", placeholder="如: 核心算法, 难点源码", key="label_input")
-
-                if st.button("💾 保存分类与标注", use_container_width=True, key="save_btn"):
-                    st.info("📌 分类功能开发中，等待后端接口完成")
-            else:
-                st.info("💡 暂无本地文件。请先上传新文档。")
-        else:
-            st.warning("⚠️ 未检测到 data/ 文件夹。")
-
-    else:
-        # 学生看到的提示
-        st.caption("💡 教师可切换至管理员模式管理知识库")
 
 
-# ============================================================
-# ===== 聊天区域 =====
-# ============================================================
+    st.divider()
+
+
+    st.caption(
+        "📌 系统状态：运行中 ✅"
+    )
+
+
+
+# ==================================================
+# 聊天区域
+# ==================================================
+
+
+if "messages" not in st.session_state:
+
+    st.session_state.messages = []
+
+
+
+# 显示历史消息
 
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if "source" in msg and msg["source"]:
-            st.caption(f"📖 来源：{msg['source']}")
 
-if prompt := st.chat_input("请问您想问什么？"):
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.spinner("AI 正在检索校本知识库并思考中..."):
+    with st.chat_message(
+        msg["role"]
+    ):
+
+        st.markdown(
+            msg["content"]
+        )
+
+
+
+# 用户输入
+
+if prompt := st.chat_input(
+    "请问您想问什么？"
+):
+
+
+    with st.chat_message(
+        "user"
+    ):
+
+        st.markdown(
+            prompt
+        )
+
+
+    st.session_state.messages.append(
+
+        {
+            "role":"user",
+
+            "content":prompt
+
+        }
+
+    )
+
+
+
+    with st.spinner(
+        "AI 正在检索知识库并思考中..."
+    ):
+
+
         try:
-            response = ask(prompt)
-            if isinstance(response, dict):
-                answer = response.get("answer", str(response))
-                source = response.get("source", "")
-            else:
-                answer = str(response)
-                source = ""
+
+
+            response = (
+
+                chat_controller
+                .ask(prompt)
+
+            )
+
+
+            answer = response.answer
+
+
+
         except Exception as e:
-            answer = f"【系统错误】后端调用失败，原因: {str(e)}"
-            source = ""
 
-    with st.chat_message("assistant"):
-        st.markdown(answer)
-        if source:
-            st.caption(f"📖 来源：{source}")
-        st.divider()
-        st.caption("💡 基于 RAG 的数据结构知识问答系统 | 知识来源：本校课程讲义与教材")
 
-    st.session_state.messages.append({"role": "assistant", "content": answer, "source": source})
+            answer = (
+                f"【系统错误】{str(e)}"
+            )
+
+
+
+    with st.chat_message(
+        "assistant"
+    ):
+
+
+        st.markdown(
+            answer
+        )
+
+
+
+    st.session_state.messages.append(
+
+        {
+
+            "role":"assistant",
+
+            "content":answer
+
+        }
+
+    )
+
+
+
+# ==================================================
+# Footer
+# ==================================================
+
+st.divider()
+
+
+st.caption(
+    "💡 基于 RAG 的数据结构知识问答系统 | 知识来源：课程教材"
+)

@@ -1,24 +1,74 @@
-import os
-import fitz
+# backend/document/parser.py
 
-def read_all_pdfs(folder_path):
-    doc_list = []
-    # 遍历文件夹pdf文件
-    for file in sorted(os.listdir(folder_path)):
-        if file.endswith(".pdf"):
-            print(f"正在读取: {file}")
-            file_full_path = os.path.join(folder_path, file)
-            doc = fitz.open(file_full_path)
-            # 逐页读取，记录文件名、页码
-            for page_num, page in enumerate(doc):
-                text = page.get_text().strip()
-                if len(text) == 0:
-                    continue
-                # 每一页内容附带来源信息
-                doc_list.append({
-                    "content": text,
-                    "source": file,
-                    "page": page_num + 1
-                })
-            doc.close()
-    return doc_list
+
+import re
+
+from backend.models.document import Document
+
+from backend.utils.logger import logger
+
+
+
+class DocumentParser:
+    """
+    文档解析器
+
+    负责:
+    文本清洗
+    格式规范化
+    """
+
+
+    def parse(
+        self,
+        document:Document
+    )->Document:
+        """
+        清洗Document内容
+        """
+
+
+        logger.info(
+            f"Parsing {document.filename}"
+        )
+
+
+        content = document.content
+
+
+        content = self.clean_text(
+            content
+        )
+
+
+        document.content = content
+
+
+        return document
+
+
+
+    def clean_text(
+        self,
+        text:str
+    )->str:
+        """
+        文本清洗
+        """
+
+
+        # 删除多余空白
+
+        text = re.sub(
+            r"\s+",
+            " ",
+            text
+        )
+
+
+        # 删除特殊字符
+
+        text = text.strip()
+
+
+        return text
