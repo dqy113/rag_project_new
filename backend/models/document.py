@@ -1,38 +1,80 @@
-# backend/models/document.py
-
 from dataclasses import dataclass, field
+from typing import List
 from datetime import datetime
-from typing import Dict, Any
 
 
 @dataclass
 class Document:
     """
-    表示系统中的一个知识文档。
+    知识库文档模型
 
-    一个Document对应用户上传的一个文件，
-    例如一个PDF教材、一份课程讲义。
+    表示用户上传的一份课程资料。
     """
 
-    id: str
+    # 唯一编号
+    document_id: str
+
+
+    # 文件名称
     filename: str
 
-    # 文档原始文本内容
-    content: str
 
-    # 文档额外信息
-    # 例如:
-    # {
-    #   "page": 5,
-    #   "author": "xxx"
-    # }
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    # 文件路径
+    filepath: str
+
+
+    # 文件类型
+    file_type: str
+
+    # 文档原始文本内容
+    content: str = ""
+
+
+    # 原始metadata
+    metadata: dict = field(
+        default_factory=dict
+    )
+
+
+    # 所属课程
+    # 例如：
+    # 数据结构
+    # CSAPP
+    course: str = "default"
+
+
+    # 章节信息
+    # 例如：
+    # ["树", "AVL"]
+    chapters: List[str] = field(
+        default_factory=list
+    )
+
+
+    # 标签
+    # 例如：
+    # ["排序", "复杂度"]
+    tags: List[str] = field(
+        default_factory=list
+    )
+
 
     # 上传时间
     upload_time: str = field(
         default_factory=lambda:
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     )
 
-    # 文件类型
-    file_type: str = ""
+
+    # 状态
+    # uploading
+    # processing
+    # ready
+    # failed
+    status: str = "ready"
+
+
+    # 生成chunk数量
+    chunk_count: int = 0

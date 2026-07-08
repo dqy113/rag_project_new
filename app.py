@@ -37,7 +37,9 @@ def render_logo():
         <div style="font-weight: 600; font-size: 18px; color: #1e1b4b;">学习助手</div>
         <div style="font-size: 12px; color: #6b7280;">个人知识库 · RAG</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+    )
     st.divider()
 
 
@@ -254,12 +256,13 @@ with st.sidebar:
 # ============================================================
 # ===== 聊天区域 =====
 # ============================================================
+
+# 显示历史聊天记录
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "source" in msg and msg["source"]:
-            st.caption(f"📖 来源：{msg['source']}")
 
+# 接收用户输入
 if prompt := st.chat_input("请输入您的课程问题..."):
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -267,7 +270,6 @@ if prompt := st.chat_input("请输入您的课程问题..."):
 
     with st.spinner("正在检索知识库并生成回答..."):
         try:
-            # ===== 调用 chat_controller，传入当前选中的课程列表 =====
             response = chat_controller.ask(
                 question=prompt,
                 course_filter=st.session_state.selected_courses
@@ -285,4 +287,12 @@ if prompt := st.chat_input("请输入您的课程问题..."):
         st.divider()
         st.caption(f"💡 基于个人知识库生成 | 课程：{', '.join(st.session_state.selected_courses) if st.session_state.selected_courses else '全部'}")
 
-    st.session_state.messages.append({"role": "assistant", "content": answer, "source": source})
+    st.session_state.messages.append({"role": "assistant", "content": answer})
+
+
+# ==================================================
+# 页脚
+# ==================================================
+
+st.divider()
+st.caption("💡 基于 RAG 的数据结构知识问答系统 | 知识来源：课程教材")

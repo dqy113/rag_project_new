@@ -1,127 +1,92 @@
-import os
-from dotenv import load_dotenv
+# backend/vectorstore/embedding.py
 
-from zhipuai import ZhipuAI
-
-from langchain.embeddings.base import Embeddings
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-
-load_dotenv()
+from sentence_transformers import SentenceTransformer
+from backend.utils.logger import logger
 
 
-# ==========================
-# 智谱 Embedding
-# ==========================
-class ZhipuEmbedding(Embeddings):
-
-    def __init__(self):
-        self.client = ZhipuAI(
-            api_key=os.getenv("ZHIPUAI_API_KEY")
-        )
-
-    def embed_documents(self, texts):
-        response = self.client.embeddings.create(
-            model="embedding-2",
-            input=texts
-        )
-
-        return [item.embedding for item in response.data]
-
-    def embed_query(self, text):
-        return self.embed_documents([text])[0]
-
-
-# ==========================
-# 初始化向量数据库
-# ==========================
-
-embedding = ZhipuEmbedding()
-
-vector_db = Chroma(
-    persist_directory="./chroma_db",
-    embedding_function=embedding
-)
-
-
-# ==========================
-# 添加文档
-# ==========================
-
-def add_chunks(chunks):
+class EmbeddingModel:
     """
-    chunks:
-    [
-        {
-            "text":"......",
-            "source_file":"xx.pdf",
-            "page_num":1
-        }
-    ]
+    Embedding模型封装
+
+    text -> vector
+
+    用于:
+    1. 文档Chunk向量化
+    2. 用户问题向量化
     """
 
-    docs = []
+    def __init__(
+        self,
+        model_name="BAAI/bge-small-zh-v1.5"
+    ):
 
-    for chunk in chunks:
+        self.model_name = model_name
 
-        docs.append(
-            Document(
-                page_content=chunk["text"],
-                metadata={
-                    "source": chunk["source_file"],
-                    "page": chunk["page_num"]
-                }
-            )
+        logger.info(
+            f"Loading embedding model: {model_name}"
         )
 
-    vector_db.add_documents(docs)
+        self.model = SentenceTransformer(
+            model_name
+        )
+
+        logger.info(
+            "Embedding model loaded"
+        )
 
 
-# ==========================
-# 相似度检索
-# ==========================
+    def embed_text(
+        self,
+        text: str
+    ) -> list[float]:
+        """
+        单文本embedding
 
-def search_knowledge(query, top_k=5):
+        输入:
+            text
 
-    return vector_db.similarity_search(
-        query,
-        k=top_k
-    )
+        输出:
+            vector
+        """
 
+        vector = self.model.encode(
+            text,
+            normalize_embeddings=True
+        )
 
-# ==========================
-# 删除某个文件
-# ==========================
-
-def delete_document(filename):
-
-    collection = vector_db._collection
-
-    result = collection.get(
-        where={
-            "source": filename
-        }
-    )
-
-    ids = result["ids"]
-
-    if len(ids) > 0:
-        collection.delete(ids=ids)
+        return vector.tolist()
 
 
-# ==========================
-# 获取所有文档
-# ==========================
 
-def list_documents():
+    def embed_documents(
+        self,
+        texts:list[str]
+    ) -> list[list[float]]:
+        """
+        批量文本embedding
 
-    collection = vector_db._collection
+        用于知识库构建
+        """
 
-    result = collection.get()
+        vectors = self.model.encode(
+            texts,
+            normalize_embeddings=True
+        )
 
-    files = set()
+        return vectors.tolist()
 
-    for meta in result["metadatas"]:
-        files.add(meta["source"])
 
-    return list(files)
+
+    def embed_query(
+        self,
+        query:str
+    ) -> list[float]:
+        """
+        用户问题embedding
+
+        和embed_text保持一致
+
+        单独写方便Retriever调用
+        """
+
+        return self.embed_text(query)
