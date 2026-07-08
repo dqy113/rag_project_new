@@ -1,133 +1,341 @@
-import os
+"""
+Knowledge Service
 
-from backend.document.loader import load_document
-from backend.document.splitter import split_text
-from backend.vectorstore.embedding import (
-    add_chunks,
-    delete_document as delete_vector_document,
-    list_documents
-)
+知识库管理核心服务
+
+职责:
+1. 添加知识文档
+2. 删除知识文档
+3. 查询知识库文档
+
+
+负责协调:
+
+Document
+    ↓
+Chunk
+    ↓
+Vector Database
+
+
+不负责:
+- 文件解析
+- embedding实现
+- Chroma实现
+"""
+
+
+from backend.models.document import Document
+
 
 
 class KnowledgeService:
 
-    def __init__(self):
-        self.data_dir = "data"
 
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-
-    # ==========================
-    # 上传文档
-    # ==========================
-    def upload_document(self, uploaded_file):
+    def __init__(
+        self,
+        loader,
+        parser,
+        splitter,
+        embedding_model,
+        chroma_manager,
+        metadata_manager
+    ):
         """
-        上传新文档
-        如果存在同名文档，则自动更新
-        """
+        初始化知识库服务
 
-        save_path = os.path.join(self.data_dir, uploaded_file.name)
-
-        # 如果存在同名文件，先删除旧知识库
-        if os.path.exists(save_path):
-            self.delete_document(uploaded_file.name)
-
-        # 保存文件
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        # 读取文档
-        docs = load_document(save_path)
-
-        # 文本切块
-        chunks = split_text(docs)
-
-        # 写入向量数据库
-        add_chunks(chunks)
-
-        return {
-            "success": True,
-            "message": "文档上传成功"
-        }
-
-    # ==========================
-    # 删除文档
-    # ==========================
-    def delete_document(self, filename):
-        """
-        删除知识库中的文档
-        包括：
-        1. Chroma中的向量
-        2. data目录中的原文件
+        所有依赖由container注入
         """
 
-        try:
-            # 删除向量
-            delete_vector_document(filename)
+        self.loader = loader
 
-            # 删除本地文件
-            file_path = os.path.join(self.data_dir, filename)
+        self.parser = parser
 
-            if os.path.exists(file_path):
-                os.remove(file_path)
+        self.splitter = splitter
 
-            return {
-                "success": True,
-                "message": "删除成功"
-            }
+        self.embedding_model = embedding_model
 
-        except Exception as e:
+        self.chroma_manager = chroma_manager
 
-            return {
-                "success": False,
-                "message": str(e)
-            }
+        self.metadata_manager = metadata_manager
 
-    # ==========================
-    # 更新文档
-    # ==========================
-    def update_document(self, uploaded_file):
+
+
+    def add_document(
+        self,
+        file_path:str,
+        course:str="default",
+        tags:list[str]=None
+    )->Document:
         """
-        更新知识库
-        实际采用：
-        删除旧文档
-        +
-        重新上传
+        添加知识文档
+
+
+        输入:
+
+            file_path:
+                文件路径
+
+
+            course:
+                所属课程
+
+
+            tags:
+                文档标签
+
+
+
+        输出:
+
+            Document对象
+
+
+
+        流程:
+
+            文件
+
+            ↓
+
+            DocumentLoader
+
+            ↓
+
+            Parser
+
+            ↓
+
+            Splitter
+
+            ↓
+
+            Embedding
+
+            ↓
+
+            Chroma
+
+            ↓
+
+            Metadata
+
         """
 
-        self.delete_document(uploaded_file.name)
 
-        return self.upload_document(uploaded_file)
+        if tags is None:
 
-    # ==========================
-    # 获取知识库所有文件
-    # ==========================
-    def get_document_list(self):
+            tags=[]
 
-        return list_documents()
 
-    # ==========================
-    # 重建知识库（可选）
-    # ==========================
-    def rebuild_database(self):
+
+        # =====================
+        # 1. 加载文件
+        # =====================
+
+        document = self.loader.load(
+            file_path
+        )
+
+
+
+        # 设置业务信息
+
+        document.course = course
+
+        document.tags = tags
+
+        document.status = "processing"
+
+
+
+        # =====================
+        # 2. 文本预处理
+        # =====================
+
+        document = self.parser.parse(
+            document
+        )
+
+
+
+        # =====================
+        # 3. 文档切块
+        # =====================
+
+        chunks = self.splitter.split(
+            document
+        )
+
+
+
+        # =====================
+        # 4. 生成embedding
+        # =====================
+
+        texts = [
+
+            chunk.content
+
+            for chunk in chunks
+
+        ]
+
+
+        vectors = (
+            self.embedding_model
+            .embed_documents(
+                texts
+            )
+        )
+
+
+
+        # =====================
+        # 5. 更新Chunk信息
+        # =====================
+
+        for chunk, vector in zip(
+            chunks,
+            vectors
+        ):
+
+            chunk.embedding = vector
+
+
+            chunk.metadata.update(
+                {
+
+                    "document_id":
+                    document.document_id,
+
+
+                    "course":
+                    document.course,
+
+
+                    "tags":
+                    document.tags
+
+                }
+            )
+
+
+
+        # =====================
+        # 6. 写入Chroma
+        # =====================
+
+        self.chroma_manager.add_chunks(
+            chunks
+        )
+
+
+
+        # =====================
+        # 7. 保存文档信息
+        # =====================
+
+        document.chunk_count = len(
+            chunks
+        )
+
+        document.status = "ready"
+
+
+
+        self.metadata_manager.add_document(
+            document
+        )
+
+
+        return document
+
+
+
+    def delete_document(
+        self,
+        document_id:str
+    )->bool:
         """
-        扫描data目录
-        重新构建整个知识库
+        删除知识文档
+
+
+        流程:
+
+            document_id
+
+            ↓
+
+            Chroma删除Chunk
+
+            ↓
+
+            metadata删除Document
+
         """
 
-        files = os.listdir(self.data_dir)
 
-        for file in files:
+        document = (
+            self.metadata_manager
+            .get_document(
+                document_id
+            )
+        )
 
-            file_path = os.path.join(self.data_dir, file)
 
-            docs = load_document(file_path)
+        if document is None:
 
-            chunks = split_text(docs)
+            return False
 
-            add_chunks(chunks)
 
-        return {
-            "success": True,
-            "message": "知识库重建完成"
-        }
+
+        # 删除向量数据
+
+        self.chroma_manager.delete_by_document_id(
+            document_id
+        )
+
+
+
+        # 删除文档记录
+
+        self.metadata_manager.delete_document(
+            document_id
+        )
+
+
+        return True
+
+
+
+    def get_documents(
+        self
+    )->list[Document]:
+        """
+        获取知识库全部文档
+
+        用于前端展示
+        """
+
+        return (
+            self.metadata_manager
+            .get_all_documents()
+        )
+
+
+
+    def get_document(
+        self,
+        document_id:str
+    ):
+        """
+        获取单个文档
+        """
+
+        return (
+            self.metadata_manager
+            .get_document(
+                document_id
+            )
+        )
