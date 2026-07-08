@@ -1,3 +1,7 @@
+<<<<<<< Updated upstream
+=======
+from backend.utils.logger import logger
+>>>>>>> Stashed changes
 # backend/retrieval/retriever.py
 
 from backend.vectorstore.embedding import EmbeddingModel
@@ -57,10 +61,31 @@ class Retriever:
         检索入口函数。
 
         完整流程:
+<<<<<<< Updated upstream
         question→Embedding→Vector Search→Top-K Chunk
 
 
         输入:
+=======
+
+        question
+
+        →
+
+        Embedding
+
+        →
+
+        Vector Search
+
+        →
+
+        Top-K Chunk
+
+
+        输入:
+
+>>>>>>> Stashed changes
             question:
                 用户问题
 
@@ -102,9 +127,18 @@ class Retriever:
 
 
         输入:
+<<<<<<< Updated upstream
             question:str
 
         输出:
+=======
+
+            question:str
+
+
+        输出:
+
+>>>>>>> Stashed changes
             list[Chunk]
 
 
@@ -140,6 +174,7 @@ class Retriever:
 
 
         输入:
+<<<<<<< Updated upstream
             top_k:int
         输出:
             None
@@ -147,6 +182,21 @@ class Retriever:
         示例:
 
             top_k=3
+=======
+
+            top_k:int
+
+
+        输出:
+
+            None
+
+
+        示例:
+
+            top_k=3
+
+>>>>>>> Stashed changes
             返回3个Chunk
 
         """

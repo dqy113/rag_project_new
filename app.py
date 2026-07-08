@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from backend.rag import ask
+from container import chat_controller
 
 st.set_page_config(page_title="智能问答助手", page_icon="🤖")
 st.title("🤖 我的第一个智能问答网页")
@@ -63,11 +63,20 @@ if prompt := st.chat_input("请问您想问什么？"):
 
     with st.spinner("AI 正在检索知识库并思考中..."):
         try:
-            response = ask(prompt)
+            response = chat_controller.ask(prompt)
         except Exception as e:
             response = f"【系统错误】后端调用失败，原因: {str(e)}"
 
     # 显示助手的回复
     with st.chat_message("assistant"):
+<<<<<<< Updated upstream
         st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
+=======
+        st.markdown(response.answer)
+    st.session_state.messages.append({"role": "assistant", "content": response})
+
+# ===== 页脚 =====
+st.divider()
+st.caption("💡 基于 RAG 的数据结构知识问答系统 | 知识来源：《数据结构》教材")
+>>>>>>> Stashed changes
