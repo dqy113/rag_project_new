@@ -14,7 +14,7 @@ from container import (
 # ==================================================
 
 st.set_page_config(
-    page_title="智能问答助手",
+    page_title="CS知识智能问答助手",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -43,7 +43,7 @@ if "tag_list" not in st.session_state:
 
 st.markdown(
     """
-    # 📚 CS知识智能问答系统
+    # 🤖 CS知识智能问答助手
 
     > 基于 RAG 技术，面向课程教材的智能问答助手
     """
@@ -63,7 +63,7 @@ with st.sidebar:
         <div style="text-align:center;padding:12px 0 20px 0;">
             <div style="font-size:48px;">📚</div>
             <div style="font-weight:600;font-size:18px;">
-                智能问答
+                你的专属知识助手
             </div>
             <div style="font-size:12px;color:#6b7280;">
                 数据结构 · RAG
