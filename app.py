@@ -40,12 +40,11 @@ if "tag_list" not in st.session_state:
 if "uploaded_docs" not in st.session_state:
     st.session_state.uploaded_docs = []
 
-if "quiz_questions" not in st.session_state:
-    st.session_state.quiz_questions = []
-if "quiz_answers" not in st.session_state:
-    st.session_state.quiz_answers = {}
-if "quiz_submitted" not in st.session_state:
-    st.session_state.quiz_submitted = False
+if "generated_questions" not in st.session_state:
+    st.session_state.generated_questions = []
+
+if "quiz_batch_counter" not in st.session_state:
+    st.session_state.quiz_batch_counter = 0
 
 
 # ==================================================
@@ -74,7 +73,7 @@ with st.sidebar:
         <div style="text-align:center;padding:12px 0 20px 0;">
             <div style="font-size:48px;">📚</div>
             <div style="font-weight:600;font-size:18px;">
-                你的专属知识助手
+                你的专属知识问答助手
             </div>
             <div style="font-size:12px;color:#6b7280;">
                 RAG
@@ -215,7 +214,8 @@ with st.sidebar:
                         st.session_state.uploaded_docs.append({
                             "filename": file.name,
                             "course": course,
-                            "tags": tags
+                            "tags": tags,
+                            "document_id": document.document_id
                         })
                         st.session_state.new_doc_count += 1
 
@@ -229,7 +229,7 @@ with st.sidebar:
                 st.rerun()
 
     # ==================================================
-    # 知识库状态
+    # 知识库状态（带删除功能）
     # ==================================================
 
     with st.expander("📁 知识库状态", expanded=False):
@@ -249,9 +249,27 @@ with st.sidebar:
 
             for course_name, docs in course_docs.items():
                 with st.expander(f"📘 {course_name}（{len(docs)} 份）", expanded=False):
-                    for doc in docs:
-                        tags_str = ", ".join(doc.get("tags", [])) if doc.get("tags") else "无标签"
-                        st.write(f"📄 {doc['filename']}  🏷️ {tags_str}")
+                    for idx, doc in enumerate(docs):
+                        col1, col2 = st.columns([5, 1])
+                        with col1:
+                            tags_str = ", ".join(doc.get("tags", [])) if doc.get("tags") else "无标签"
+                            st.write(f"📄 {doc['filename']}  🏷️ {tags_str}")
+                        with col2:
+                            if st.button("🗑️", key=f"del_{course_name}_{idx}_{doc['document_id']}"):
+                                try:
+                                    result = knowledge_controller.delete_document(doc['document_id'])
+                                    if result:
+                                        st.session_state.uploaded_docs = [
+                                            d for d in st.session_state.uploaded_docs
+                                            if d['document_id'] != doc['document_id']
+                                        ]
+                                        st.session_state.new_doc_count = len(st.session_state.uploaded_docs)
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ 删除失败：{doc['filename']}")
+                                except Exception as e:
+                                    st.error(f"❌ 删除失败：{str(e)}")
         else:
             st.caption("暂无本次新增文档")
 
@@ -268,17 +286,19 @@ with st.sidebar:
             with col1:
                 if st.button("🗑️ 清空历史", use_container_width=True):
                     st.session_state.messages = []
-                    st.session_state.quiz_questions = []
-                    st.session_state.quiz_answers = {}
-                    st.session_state.quiz_submitted = False
+                    st.session_state.generated_questions = []
+                    st.session_state.quiz_batch_counter = 0
                     st.rerun()
 
             with col2:
+                # ===== 导出为 TXT（只导出聊天消息） =====
                 export_text = f"问答历史导出\n导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 export_text += "=" * 50 + "\n\n"
                 for msg in st.session_state.messages:
-                    role_label = "用户" if msg["role"] == "user" else "知识助手"
-                    export_text += f"【{role_label}】\n{msg['content']}\n\n"
+                    # 只导出有 role 字段的聊天消息
+                    if "role" in msg:
+                        role_label = "用户" if msg["role"] == "user" else "知识助手"
+                        export_text += f"【{role_label}】\n{msg['content']}\n\n"
 
                 if st.download_button(
                     label="📥 导出TXT",
@@ -293,11 +313,16 @@ with st.sidebar:
                 if st.button("🧠 生成自测题", use_container_width=True):
                     history_text = ""
                     for msg in st.session_state.messages:
-                        role = "用户" if msg["role"] == "user" else "知识助手"
-                        history_text += f"{role}：{msg['content']}\n"
+                        if msg.get("type") == "chat":
+                            role = "用户" if msg["role"] == "user" else "知识助手"
+                            history_text += f"{role}：{msg['content']}\n"
 
                     prompt = f"""
 以下是一段用户与知识助手的问答历史，请根据这些问答内容生成 3 道选择题（单选题），每道题包含 4 个选项（A/B/C/D），并给出正确答案和解析。
+
+**重要要求：**
+1. 严格生成 3 道题，不要多也不要少。
+2. 题目不要与之前生成的重复。
 
 问答历史：
 {history_text}
@@ -360,17 +385,27 @@ D. xxx
                                         explanation = line.replace('解析：', '').replace('解析:', '').strip()
 
                                 if question_text and options and answer:
-                                    questions.append({
-                                        "question": question_text,
-                                        "options": options,
-                                        "answer": answer,
-                                        "解析": explanation
-                                    })
+                                    if question_text not in st.session_state.generated_questions:
+                                        questions.append({
+                                            "question": question_text,
+                                            "options": options,
+                                            "answer": answer,
+                                            "解析": explanation
+                                        })
+                                        st.session_state.generated_questions.append(question_text)
 
-                            st.session_state.quiz_questions = questions
-                            st.session_state.quiz_answers = {}
-                            st.session_state.quiz_submitted = False
-                            st.rerun()
+                            if questions:
+                                st.session_state.quiz_batch_counter += 1
+                                st.session_state.messages.append({
+                                    "type": "quiz",
+                                    "batch_id": st.session_state.quiz_batch_counter,
+                                    "questions": questions,
+                                    "answers": {},
+                                    "submitted": False
+                                })
+                                st.rerun()
+                            else:
+                                st.warning("没有生成新的题目，请尝试更多问答后再生成。")
                         except Exception as e:
                             st.error(f"生成失败: {str(e)}")
         else:
@@ -420,65 +455,98 @@ for i, q in enumerate(quick_questions):
 
 st.divider()
 
-# ===== 历史消息 =====
+# ===== 按顺序显示所有消息（包括自测题） =====
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg.get("type") == "quiz":
+        # 显示自测题
+        batch_id = msg["batch_id"]
+        questions = msg["questions"]
+        answers = msg["answers"]
+        submitted = msg["submitted"]
 
-# ===== 自测题显示在历史消息下方，输入框上方 =====
-if st.session_state.quiz_questions:
-    with st.expander("🧠 自测题", expanded=True):
-        st.markdown("### 📝 请选择答案")
+        with st.expander(f"🧠 自测题 第 {batch_id} 批（{len(questions)} 题）", expanded=True):
+            st.markdown("### 📝 请选择答案")
 
-        for i, q in enumerate(st.session_state.quiz_questions):
-            st.markdown(f"**第 {i+1} 题：{q['question']}**")
+            for i, q in enumerate(questions):
+                st.markdown(f"**第 {i+1} 题：{q['question']}**")
 
-            option_labels = q['options']
-            selected = st.radio(
-                "选择答案",
-                options=option_labels,
-                key=f"quiz_{i}",
-                label_visibility="collapsed"
-            )
-            st.session_state.quiz_answers[i] = selected
+                option_labels = q['options']
+                current_answer = answers.get(i, "")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📤 提交答案", use_container_width=True):
-                st.session_state.quiz_submitted = True
-                st.rerun()
-
-        with col2:
-            if st.button("🗑️ 关闭自测题", use_container_width=True):
-                st.session_state.quiz_questions = []
-                st.session_state.quiz_answers = {}
-                st.session_state.quiz_submitted = False
-                st.rerun()
-
-        if st.session_state.quiz_submitted:
-            st.markdown("### ✅ 答题结果")
-
-            correct_count = 0
-            for i, q in enumerate(st.session_state.quiz_questions):
-                user_answer = st.session_state.quiz_answers.get(i, "")
-                correct_answer = q['answer']
-
-                if user_answer and user_answer.startswith(correct_answer):
-                    correct_count += 1
-                    st.success(f"✅ 第 {i+1} 题：正确！")
-                elif user_answer:
-                    st.error(f"❌ 第 {i+1} 题：错误，正确答案是 {correct_answer}")
-                    st.caption(f"解析：{q['解析']}")
+                if current_answer in option_labels:
+                    default_index = option_labels.index(current_answer)
                 else:
-                    st.warning(f"⚠️ 第 {i+1} 题：未作答")
+                    default_index = None
 
-            st.info(f"**得分：{correct_count}/{len(st.session_state.quiz_questions)}**")
+                disabled = submitted
 
-            if st.button("🔄 重新答题", use_container_width=True):
-                st.session_state.quiz_answers = {}
-                st.session_state.quiz_submitted = False
-                st.rerun()
+                selected = st.radio(
+                    "选择答案",
+                    options=option_labels,
+                    key=f"quiz_batch_{batch_id}_{i}",
+                    label_visibility="collapsed",
+                    index=default_index,
+                    disabled=disabled
+                )
+                if selected and not disabled:
+                    answers[i] = selected
+                    # 更新 messages 中的对应批次
+                    for m in st.session_state.messages:
+                        if m.get("type") == "quiz" and m["batch_id"] == batch_id:
+                            m["answers"] = answers
+                            break
 
+            col1, col2 = st.columns(2)
+            with col1:
+                if not submitted:
+                    if st.button("📤 提交答案", key=f"submit_batch_{batch_id}", use_container_width=True):
+                        for m in st.session_state.messages:
+                            if m.get("type") == "quiz" and m["batch_id"] == batch_id:
+                                m["submitted"] = True
+                                break
+                        st.rerun()
+
+            with col2:
+                if st.button("🗑️ 关闭", key=f"close_batch_{batch_id}", use_container_width=True):
+                    st.session_state.messages = [
+                        m for m in st.session_state.messages
+                        if not (m.get("type") == "quiz" and m["batch_id"] == batch_id)
+                    ]
+                    st.rerun()
+
+            if submitted:
+                st.divider()
+                st.markdown("### ✅ 答题结果")
+
+                correct_count = 0
+                for i, q in enumerate(questions):
+                    user_answer = answers.get(i, "")
+                    correct_answer = q['answer']
+
+                    if user_answer and user_answer.startswith(correct_answer):
+                        correct_count += 1
+                        st.success(f"✅ 第 {i+1} 题：正确！")
+                    elif user_answer:
+                        st.error(f"❌ 第 {i+1} 题：错误，正确答案是 {correct_answer}")
+                        st.caption(f"解析：{q['解析']}")
+                    else:
+                        st.warning(f"⚠️ 第 {i+1} 题：未作答")
+
+                st.info(f"**得分：{correct_count}/{len(questions)}**")
+
+                if st.button("🔄 重新答题", key=f"retry_batch_{batch_id}", use_container_width=True):
+                    for m in st.session_state.messages:
+                        if m.get("type") == "quiz" and m["batch_id"] == batch_id:
+                            m["answers"] = {}
+                            m["submitted"] = False
+                            break
+                    st.rerun()
+
+
+    else:
+        # 显示普通聊天消息
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
 # ===== 用户输入 =====
 quick_prompt = st.session_state.get("_quick_prompt", "")
@@ -493,6 +561,7 @@ if prompt := st.chat_input("请问您想问什么？") or quick_prompt:
         st.markdown(prompt)
 
     st.session_state.messages.append({
+        "type": "chat",
         "role": "user",
         "content": prompt
     })
@@ -508,6 +577,7 @@ if prompt := st.chat_input("请问您想问什么？") or quick_prompt:
         st.markdown(answer)
 
     st.session_state.messages.append({
+        "type": "chat",
         "role": "assistant",
         "content": answer
     })
