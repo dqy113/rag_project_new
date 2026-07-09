@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import time
+import re
 from datetime import datetime
 
 from container import (
@@ -36,9 +37,15 @@ if "course_list" not in st.session_state:
 if "tag_list" not in st.session_state:
     st.session_state.tag_list = ["教材", "课件", "习题"]
 
-# ===== 新增：记录本次上传的文档 =====
 if "uploaded_docs" not in st.session_state:
-    st.session_state.uploaded_docs = []  # 每个元素: {"filename": "xxx.pdf", "course": "数据结构", "tags": ["教材"]}
+    st.session_state.uploaded_docs = []
+
+if "quiz_questions" not in st.session_state:
+    st.session_state.quiz_questions = []
+if "quiz_answers" not in st.session_state:
+    st.session_state.quiz_answers = {}
+if "quiz_submitted" not in st.session_state:
+    st.session_state.quiz_submitted = False
 
 
 # ==================================================
@@ -205,7 +212,6 @@ with st.sidebar:
                             tags=tags
                         )
 
-                        # ===== 记录本次上传的文档 =====
                         st.session_state.uploaded_docs.append({
                             "filename": file.name,
                             "course": course,
@@ -223,7 +229,7 @@ with st.sidebar:
                 st.rerun()
 
     # ==================================================
-    # 知识库状态（只显示本次新增，按课程分组）
+    # 知识库状态
     # ==================================================
 
     with st.expander("📁 知识库状态", expanded=False):
@@ -234,7 +240,6 @@ with st.sidebar:
             st.divider()
             st.markdown("### 📂 本次上传（按课程分类）")
 
-            # 按课程分组
             course_docs = {}
             for doc in st.session_state.uploaded_docs:
                 course_name = doc.get("course", "未分类")
@@ -251,7 +256,7 @@ with st.sidebar:
             st.caption("暂无本次新增文档")
 
     # ==================================================
-    # 问答历史（含导出TXT）
+    # 问答历史（含导出TXT + 生成自测题）
     # ==================================================
 
     with st.expander("📋 问答历史", expanded=False):
@@ -259,14 +264,16 @@ with st.sidebar:
         if len(st.session_state.messages) > 0:
             st.caption(f"共 {len(st.session_state.messages)} 条对话记录")
 
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button("🗑️ 清空历史", use_container_width=True):
                     st.session_state.messages = []
+                    st.session_state.quiz_questions = []
+                    st.session_state.quiz_answers = {}
+                    st.session_state.quiz_submitted = False
                     st.rerun()
 
             with col2:
-                # 导出为 TXT
                 export_text = f"问答历史导出\n导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                 export_text += "=" * 50 + "\n\n"
                 for msg in st.session_state.messages:
@@ -274,13 +281,98 @@ with st.sidebar:
                     export_text += f"【{role_label}】\n{msg['content']}\n\n"
 
                 if st.download_button(
-                    label="📥 导出为 TXT",
+                    label="📥 导出TXT",
                     data=export_text,
                     file_name=f"问答历史_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
                     mime="text/plain",
                     use_container_width=True
                 ):
                     st.toast("✅ 导出成功！")
+
+            with col3:
+                if st.button("🧠 生成自测题", use_container_width=True):
+                    history_text = ""
+                    for msg in st.session_state.messages:
+                        role = "用户" if msg["role"] == "user" else "知识助手"
+                        history_text += f"{role}：{msg['content']}\n"
+
+                    prompt = f"""
+以下是一段用户与知识助手的问答历史，请根据这些问答内容生成 3 道选择题（单选题），每道题包含 4 个选项（A/B/C/D），并给出正确答案和解析。
+
+问答历史：
+{history_text}
+
+请严格按以下格式输出（不要包含任何其他内容）：
+【题目1】
+问题：xxx
+A. xxx
+B. xxx
+C. xxx
+D. xxx
+正确答案：A
+解析：xxx
+
+【题目2】
+问题：xxx
+A. xxx
+B. xxx
+C. xxx
+D. xxx
+正确答案：B
+解析：xxx
+
+【题目3】
+问题：xxx
+A. xxx
+B. xxx
+C. xxx
+D. xxx
+正确答案：C
+解析：xxx
+"""
+                    with st.spinner("正在生成自测题..."):
+                        try:
+                            response = chat_controller.ask(prompt)
+                            quiz_text = response.answer
+
+                            questions = []
+                            parts = re.split(r'【题目\d+】', quiz_text)
+                            parts = [p.strip() for p in parts if p.strip()]
+
+                            for part in parts:
+                                lines = part.split('\n')
+                                question_text = ""
+                                options = []
+                                answer = ""
+                                explanation = ""
+
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    if line.startswith('问题：') or line.startswith('问题:'):
+                                        question_text = line.replace('问题：', '').replace('问题:', '').strip()
+                                    elif re.match(r'^[A-D]\.', line):
+                                        options.append(line)
+                                    elif line.startswith('正确答案：') or line.startswith('正确答案:'):
+                                        answer = line.replace('正确答案：', '').replace('正确答案:', '').strip()
+                                    elif line.startswith('解析：') or line.startswith('解析:'):
+                                        explanation = line.replace('解析：', '').replace('解析:', '').strip()
+
+                                if question_text and options and answer:
+                                    questions.append({
+                                        "question": question_text,
+                                        "options": options,
+                                        "answer": answer,
+                                        "解析": explanation
+                                    })
+
+                            st.session_state.quiz_questions = questions
+                            st.session_state.quiz_answers = {}
+                            st.session_state.quiz_submitted = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"生成失败: {str(e)}")
         else:
             st.caption("暂无历史记录")
 
@@ -311,7 +403,7 @@ if len(st.session_state.messages) == 0:
         unsafe_allow_html=True
     )
 
-# ===== 快捷提问（放在聊天区上方） =====
+# ===== 快捷提问 =====
 quick_questions = [
     "什么是栈？",
     "快速排序的时间复杂度是多少？",
@@ -332,6 +424,63 @@ st.divider()
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+
+# ===== 自测题显示在历史消息下方，输入框上方 =====
+if st.session_state.quiz_questions:
+    with st.expander("🧠 自测题", expanded=True):
+        st.markdown("### 📝 请选择答案")
+
+        for i, q in enumerate(st.session_state.quiz_questions):
+            st.markdown(f"**第 {i+1} 题：{q['question']}**")
+
+            option_labels = q['options']
+            selected = st.radio(
+                "选择答案",
+                options=option_labels,
+                key=f"quiz_{i}",
+                label_visibility="collapsed"
+            )
+            st.session_state.quiz_answers[i] = selected
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📤 提交答案", use_container_width=True):
+                st.session_state.quiz_submitted = True
+                st.rerun()
+
+        with col2:
+            if st.button("🗑️ 关闭自测题", use_container_width=True):
+                st.session_state.quiz_questions = []
+                st.session_state.quiz_answers = {}
+                st.session_state.quiz_submitted = False
+                st.rerun()
+
+        if st.session_state.quiz_submitted:
+            st.divider()
+            st.markdown("### ✅ 答题结果")
+
+            correct_count = 0
+            for i, q in enumerate(st.session_state.quiz_questions):
+                user_answer = st.session_state.quiz_answers.get(i, "")
+                correct_answer = q['answer']
+
+                if user_answer and user_answer.startswith(correct_answer):
+                    correct_count += 1
+                    st.success(f"✅ 第 {i+1} 题：正确！")
+                elif user_answer:
+                    st.error(f"❌ 第 {i+1} 题：错误，正确答案是 {correct_answer}")
+                    st.caption(f"解析：{q['解析']}")
+                else:
+                    st.warning(f"⚠️ 第 {i+1} 题：未作答")
+
+            st.info(f"**得分：{correct_count}/{len(st.session_state.quiz_questions)}**")
+
+            if st.button("🔄 重新答题", use_container_width=True):
+                st.session_state.quiz_answers = {}
+                st.session_state.quiz_submitted = False
+                st.rerun()
+
+        st.divider()
 
 # ===== 用户输入 =====
 quick_prompt = st.session_state.get("_quick_prompt", "")
