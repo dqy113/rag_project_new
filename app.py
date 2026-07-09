@@ -36,6 +36,10 @@ if "course_list" not in st.session_state:
 if "tag_list" not in st.session_state:
     st.session_state.tag_list = ["教材", "课件", "习题"]
 
+# ===== 新增：记录本次上传的文档 =====
+if "uploaded_docs" not in st.session_state:
+    st.session_state.uploaded_docs = []  # 每个元素: {"filename": "xxx.pdf", "course": "数据结构", "tags": ["教材"]}
+
 
 # ==================================================
 # 标题区域
@@ -201,6 +205,12 @@ with st.sidebar:
                             tags=tags
                         )
 
+                        # ===== 记录本次上传的文档 =====
+                        st.session_state.uploaded_docs.append({
+                            "filename": file.name,
+                            "course": course,
+                            "tags": tags
+                        })
                         st.session_state.new_doc_count += 1
 
                     except Exception as e:
@@ -211,6 +221,34 @@ with st.sidebar:
                 time.sleep(1)
 
                 st.rerun()
+
+    # ==================================================
+    # 知识库状态（只显示本次新增，按课程分组）
+    # ==================================================
+
+    with st.expander("📁 知识库状态", expanded=False):
+
+        st.info(f"📄 本次新增文档：{st.session_state.new_doc_count} 份")
+
+        if st.session_state.uploaded_docs:
+            st.divider()
+            st.markdown("### 📂 本次上传（按课程分类）")
+
+            # 按课程分组
+            course_docs = {}
+            for doc in st.session_state.uploaded_docs:
+                course_name = doc.get("course", "未分类")
+                if course_name not in course_docs:
+                    course_docs[course_name] = []
+                course_docs[course_name].append(doc)
+
+            for course_name, docs in course_docs.items():
+                with st.expander(f"📘 {course_name}（{len(docs)} 份）", expanded=False):
+                    for doc in docs:
+                        tags_str = ", ".join(doc.get("tags", [])) if doc.get("tags") else "无标签"
+                        st.write(f"📄 {doc['filename']}  🏷️ {tags_str}")
+        else:
+            st.caption("暂无本次新增文档")
 
     # ==================================================
     # 问答历史（含导出TXT）
@@ -246,12 +284,6 @@ with st.sidebar:
         else:
             st.caption("暂无历史记录")
 
-    # ==================================================
-    # 知识库状态（独立侧边栏，放在最底下）
-    # ==================================================
-
-    with st.expander("📁 知识库状态", expanded=False):
-        st.info(f"📄 本次新增文档：{st.session_state.new_doc_count} 份")
     st.divider()
     st.caption("📌 系统状态：运行中 ✅")
 
