@@ -213,26 +213,6 @@ with st.sidebar:
                 st.rerun()
 
     # ==================================================
-    # 快捷提问
-    # ==================================================
-
-    with st.expander("⚡ 快捷提问", expanded=False):
-        st.caption("点击问题自动填入聊天框")
-
-        quick_questions = [
-            "什么是栈？",
-            "快速排序的时间复杂度是多少？",
-            "数组和链表的区别是什么？",
-            "什么是递归？",
-            "二叉树的遍历方式有哪些？"
-        ]
-
-        for q in quick_questions:
-            if st.button(q, use_container_width=True):
-                st.session_state._quick_prompt = q
-                st.rerun()
-
-    # ==================================================
     # 问答历史（含导出TXT）
     # ==================================================
 
@@ -270,27 +250,58 @@ with st.sidebar:
     # 知识库状态（独立侧边栏，放在最底下）
     # ==================================================
 
-   
     with st.expander("📁 知识库状态", expanded=False):
         st.info(f"📄 本次新增文档：{st.session_state.new_doc_count} 份")
     st.divider()
-    st.caption("📌 系统状态：运行中 ✅") 
-   
-
+    st.caption("📌 系统状态：运行中 ✅")
 
 
 # ==================================================
 # 聊天区域
 # ==================================================
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ===== 欢迎语/空状态 =====
+if len(st.session_state.messages) == 0:
+    st.markdown(
+        """
+        <div style="text-align:center;padding:60px 20px 40px 20px;">
+            <div style="font-size:64px;margin-bottom:20px;">📚</div>
+            <h2 style="color:#1e1b4b;">上传资料，开始学习</h2>
+            <p style="color:#6b7280;font-size:16px;">
+                上传您的课程教材、课件或习题集，<br>
+                我可以帮您解答课程中的各种问题。
+            </p>
+            <p style="color:#9ca3af;font-size:14px;margin-top:20px;">
+                💡 试试点击下方的快捷提问，或直接在输入框提问
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
+# ===== 快捷提问（放在聊天区上方） =====
+quick_questions = [
+    "什么是栈？",
+    "快速排序的时间复杂度是多少？",
+    "数组和链表的区别是什么？",
+    "什么是递归？"
+]
+
+cols = st.columns(len(quick_questions))
+for i, q in enumerate(quick_questions):
+    with cols[i]:
+        if st.button(q, key=f"quick_{i}", use_container_width=True):
+            st.session_state._quick_prompt = q
+            st.rerun()
+
+st.divider()
+
+# ===== 历史消息 =====
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 检查是否有快捷提问触发
+# ===== 用户输入 =====
 quick_prompt = st.session_state.get("_quick_prompt", "")
 if quick_prompt:
     st.session_state._quick_prompt = ""
