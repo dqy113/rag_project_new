@@ -77,7 +77,7 @@ with st.sidebar:
                 你的专属知识助手
             </div>
             <div style="font-size:12px;color:#6b7280;">
-                数据结构 · RAG
+                RAG
             </div>
         </div>
         """,
@@ -456,7 +456,6 @@ if st.session_state.quiz_questions:
                 st.rerun()
 
         if st.session_state.quiz_submitted:
-            st.divider()
             st.markdown("### ✅ 答题结果")
 
             correct_count = 0
@@ -480,7 +479,6 @@ if st.session_state.quiz_questions:
                 st.session_state.quiz_submitted = False
                 st.rerun()
 
-        st.divider()
 
 # ===== 用户输入 =====
 quick_prompt = st.session_state.get("_quick_prompt", "")
