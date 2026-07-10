@@ -279,8 +279,11 @@ with st.sidebar:
 
     with st.expander("📋 问答历史", expanded=False):
 
-        if len(st.session_state.messages) > 0:
-            st.caption(f"共 {len(st.session_state.messages)} 条对话记录")
+        # 只统计聊天消息（有 role 字段的）
+        chat_messages = [msg for msg in st.session_state.messages if msg.get("type") == "chat"]
+        
+        if chat_messages:
+            st.caption(f"共 {len(chat_messages)} 条对话记录")
 
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -450,7 +453,24 @@ cols = st.columns(len(quick_questions))
 for i, q in enumerate(quick_questions):
     with cols[i]:
         if st.button(q, key=f"quick_{i}", use_container_width=True):
-            st.session_state._quick_prompt = q
+            # 直接添加到消息列表
+            st.session_state.messages.append({
+                "type": "chat",
+                "role": "user",
+                "content": q
+            })
+            # 调用 AI 回答
+            with st.spinner("AI 正在思考中..."):
+                try:
+                    response = chat_controller.ask(q)
+                    answer = response.answer
+                except Exception as e:
+                    answer = f"【系统错误】{str(e)}"
+                st.session_state.messages.append({
+                    "type": "chat",
+                    "role": "assistant",
+                    "content": answer
+                })
             st.rerun()
 
 st.divider()
@@ -542,21 +562,13 @@ for msg in st.session_state.messages:
                             break
                     st.rerun()
 
-
     else:
         # 显示普通聊天消息
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
 # ===== 用户输入 =====
-quick_prompt = st.session_state.get("_quick_prompt", "")
-if quick_prompt:
-    st.session_state._quick_prompt = ""
-
-if prompt := st.chat_input("请问您想问什么？") or quick_prompt:
-    if quick_prompt and not prompt:
-        prompt = quick_prompt
-
+if prompt := st.chat_input("请问您想问什么？"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
